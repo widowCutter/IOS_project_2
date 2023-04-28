@@ -150,10 +150,10 @@ void clerk(unsigned id, shared_t *mem, unsigned break_ms) {
       while (mem->in_queue[(que = rand() % 3)] == 0);
       sem_post(&mem->qe_sem[que]);
       mem->in_queue[que]--;
-      log_msg(mem, true, true, ": U %u: serving a service of type %u\n", id, que);
+      log_msg(mem, true, true, ": U %u: serving a service of type %u\n", id, que + 1);
       sem_post(&mem->shared_lock);
       usleep(rand() % 11 * 1000);
-      log_msg(mem, true, false, ": U %u: service finished\n", id, que);
+      log_msg(mem, true, false, ": U %u: service finished\n", id, que + 1);
     }
   }
 }
@@ -169,10 +169,10 @@ void customer(unsigned id, shared_t *mem, unsigned timeout) {
     return;
   }
   unsigned que = rand() % 3;
-  log_msg(mem, true, true, ": Z %u: entering office for a service %u\n", id, que );
+  log_msg(mem, true, true, ": Z %u: entering office for a service %u\n", id, que + 1);
   sem_post(&mem->shared_lock);
   wait_in_queue(que, mem);
-  log_msg(mem, false, false, "Z %u: called by office worker\n", id);
+  log_msg(mem, true, false, ": Z %u: called by office worker\n", id);
   usleep(rand() % 11 * 1000);
   log_msg(mem, true, false,": Z %u: going home\n", id);
 }
