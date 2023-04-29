@@ -1,9 +1,9 @@
 binary=proj2
 
 CC=gcc
-CFLAGS=-std=gnu99 -Wall -Wextra -Werror -pedantic -pthread
+CFLAGS=-std=gnu99 -Wall -Wextra -Werror -pedantic
 
-proj2: proj2.c proj2.h
+proj2: proj2.c proj2.h Makefile
 	$(CC) $(CFLAGS) $< -o $(binary)
 
 run: proj2

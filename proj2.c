@@ -2,6 +2,7 @@
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -42,50 +43,35 @@ void error_exit(int exit_code, char *err_message) {
   exit(exit_code);
 }
 
-shared_t *create_shared_memory(size_t size) {
+s_memory_t *create_shared_memory(size_t size) {
   int protection = PROT_READ | PROT_WRITE;
 
   // Visible to process and its children but not accessible by other processess
   int visibility = MAP_SHARED | MAP_ANONYMOUS;
-  shared_t *mem = mmap(NULL, size, protection, visibility, -1, 0);
+  s_memory_t *mem = mmap(NULL, size, protection, visibility, -1, 0);
 
   mem->fp = mmap(NULL, sizeof(FILE *), protection, visibility, -1, 0);
 
   return mem;
 }
-void destroy_semaphores() {
-  sem_destroy(clerk_sem);
-  sem_destroy(clerk_done_sem);
-  sem_destroy(customer_sem);
-  sem_destroy(customer_done_sem);
-  sem_destroy(shared_lock);
+
+void clean_semaphores(s_memory_t *mem){
+  sem_destroy(&mem->qe_sem[0]);
 }
 
-void init_semaphores(shared_t *mem) {
-
-  short failed = 0;
-  if (sem_init(&mem->clerk_sem, 1, 1) == -1)
-    failed = 1;
-  if (sem_init(&mem->clerk_done_sem, 1, 1) == -1)
-    failed = 1;
-  if (sem_init(&mem->customer_sem, 1, 1) == -1)
-    failed = 1;
-  if (sem_init(&mem->customer_done_sem, 1, 1) == -1)
-    failed = 1;
+void init_semaphores(s_memory_t *mem) {
   if (sem_init(&mem->shared_lock, 1, 1) == -1)
-    failed = 1;
+    error_exit(1, "Filed to create semaphores\n");
   if (sem_init(&mem->qe_sem[0], 1, 0) == -1)
-    failed = 1;
+    error_exit(1, "Filed to create semaphores\n");
   if (sem_init(&mem->qe_sem[1], 1, 0) == -1)
-    failed = 1;
+    error_exit(1, "Filed to create semaphores\n");
   if (sem_init(&mem->qe_sem[2], 1, 0) == -1)
-    failed = 1;
+    error_exit(1, "Filed to create semaphores\n");
 
-  if (failed == 1)
-    error_exit(5, "Failed to create semaphores\n");
 }
 
-int log_msg(shared_t *mem, bool log_action, bool is_mem_locked, const char *fmt, ...) {
+int log_msg(s_memory_t *mem, bool log_action, bool is_mem_locked, const char *fmt, ...) {
 
   if (!is_mem_locked) {
     sem_wait(&mem->shared_lock);
@@ -115,7 +101,7 @@ int log_msg(shared_t *mem, bool log_action, bool is_mem_locked, const char *fmt,
 }
 
 
-void wait_in_queue(unsigned queue, shared_t *mem){
+void wait_in_queue(unsigned queue, s_memory_t *mem){
   sem_wait(&mem->shared_lock);
   mem->in_queue[queue]++;
   sem_post(&mem->shared_lock);
@@ -123,7 +109,7 @@ void wait_in_queue(unsigned queue, shared_t *mem){
 }
 
 
-void clerk(unsigned id, shared_t *mem, unsigned break_ms) {
+void clerk(unsigned id, s_memory_t *mem, unsigned break_ms) {
   log_msg(mem, true, false,": U %u: started\n", id);
   srand(id * time(NULL));
   while (true) {
@@ -158,7 +144,7 @@ void clerk(unsigned id, shared_t *mem, unsigned break_ms) {
   }
 }
 
-void customer(unsigned id, shared_t *mem, unsigned timeout) {
+void customer(unsigned id, s_memory_t *mem, unsigned timeout) {
   log_msg(mem, true, false,": Z %u: started\n", id);
   srand(id * time(NULL));
   usleep(rand() % (timeout * 1000));
@@ -180,14 +166,13 @@ void customer(unsigned id, shared_t *mem, unsigned timeout) {
 int main(int argc, char *argv[]) {
   args_t args;
   if (0 > parse_arguments(argc, argv, &args)) {
-    error_exit(1, "Wrong arguments");
+    error_exit(1, "Wrong arguments\n");
   }
 
-  shared_t *mem = create_shared_memory(sizeof(shared_t));
+  s_memory_t *mem = create_shared_memory(sizeof(s_memory_t));
   mem->action_id = 1;
   mem->is_open = true;
 
-  mem->pending_customers = args.n_customers;
 
   init_semaphores(mem);
 
@@ -208,18 +193,27 @@ int main(int argc, char *argv[]) {
       }
       break;
     case -1:
-      error_exit(2, "fork failed?");
+      error_exit(1, "fork failed\n");
     default:
       break;
     }
   }
-  usleep(args.working_ms * 1000);
+  // check if F > 0 and then calculate and sleep for the desired time 
+  usleep(rand() % args.working_ms + ((args.working_ms > 0) ? args.working_ms/2:0) * 1000);
+  
+  //Closes the post office after getting access to the control value
   sem_wait(&mem->shared_lock);
   mem->is_open = false;
-  log_msg(mem, true, true,": closing\n");
   sem_post(&mem->shared_lock);
+  log_msg(mem, true, false,": closing\n");
+  
+  // Waits for children to exit
   while ((wpid = wait(&status)) > 0)
     ;
+
+  // Cleans up after
+  fclose(mem->fp);
+  munmap(mem, sizeof(s_memory_t));
 
   return EXIT_SUCCESS;
 }

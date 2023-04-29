@@ -14,12 +14,6 @@
 #define EXIT_SUCCESS 0
 
 
-#define CLERK_S "clerk_semaphore"
-#define CLERK_DONE_S "clerk_done_semaphore"
-#define CUSTOMER_DONE_S "customer_done_semaphore"
-#define CUSTOMER_S "customer_semaphor"
-#define SHARED_LOCK_S "shared_lock_semaphor"
-
 // Macro for checking if value is within range
 #define check_range(max_range, value) ((max_range < value) ? 1 : 0)
 
@@ -36,17 +30,12 @@ typedef struct {
 } args_t;
 
 typedef struct shared_memory{
-  sem_t clerk_sem;
-  sem_t clerk_done_sem;
-  sem_t customer_sem;
-  sem_t customer_done_sem;
   sem_t shared_lock;
   sem_t qe_sem[3];
   
   FILE *fp;
   bool is_open;
   unsigned action_id;
-  unsigned pending_customers;
   int in_queue[3];
-} shared_t;
+} s_memory_t;
 
